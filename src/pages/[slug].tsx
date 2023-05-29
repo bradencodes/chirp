@@ -1,29 +1,57 @@
-import { type NextPage } from "next";
+import { type GetStaticProps, type NextPage } from "next";
 import Head from "next/head";
 import { api } from "~/utils/api";
 
-const ProfilePage: NextPage = () => {
-  const { data, isLoading } = api.profile.getUserByUsername.useQuery({
-    username: "bradencodes",
+const ProfilePage: NextPage<{ username: string }> = ({ username }) => {
+  const { data } = api.profile.getUserByUsername.useQuery({
+    username,
   });
 
-  if (isLoading) <div>Loading...</div>;
-
   if (!data) return <div>404</div>;
-
-  console.log(`%c data`, "background: white; color: black; font-size: 20px");
-  console.log(data);
 
   return (
     <>
       <Head>
-        <title>Profile</title>
+        <title>{data.username}</title>
       </Head>
-      <main className="flex h-screen justify-center">
+      <PageLayout>
         <div>{data.username}</div>
-      </main>
+      </PageLayout>
     </>
   );
+};
+
+import { createProxySSGHelpers } from "@trpc/react-query/ssg";
+import { appRouter } from "~/server/api/root";
+import { prisma } from "~/server/db";
+import superjson from "superjson";
+import { PageLayout } from "~/components/layout";
+
+export const getStaticProps: GetStaticProps = async (context) => {
+  const ssg = createProxySSGHelpers({
+    router: appRouter,
+    ctx: { prisma, userId: null },
+    transformer: superjson,
+  });
+
+  const slug = context?.params?.slug;
+
+  if (typeof slug !== "string") throw new Error("no slug");
+
+  const username = slug.replace("@", "");
+
+  await ssg.profile.getUserByUsername.prefetch({ username });
+
+  return {
+    props: {
+      trpcState: ssg.dehydrate(),
+      username,
+    },
+  };
+};
+
+export const getStaticPaths = () => {
+  return { paths: [], fallback: "blocking" };
 };
 
 export default ProfilePage;
